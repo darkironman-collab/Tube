@@ -56,11 +56,9 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 # - package name is changed to a distinct Extreme Tube package.
 # - GmsCore support pulls in its required stream-spoof/dependency patches.
 # - Hide ads enables Morphe's YouTube ad-removal patch.
-# - Video quality enables Morphe's current quality fixes/advanced menu.
-# - Extreme Tube branding is our local, source-audited label patch.
-#
-# The dedicated Extreme Tube "All Formats" codec selector will be added to
-# this command once its custom patch is implemented and independently tested.
+# - Video quality enables Morphe's current quality controller/fixes.
+# - Extreme Tube branding changes the app label without adding network code.
+# - All Formats selector exposes only formats already returned by YouTube.
 java -jar "$MORPHE_JAR" patch \
   -p "$MORPHE_PATCHES" \
     -e "Clone app" -O "packageName=com.extremetube.app" \
@@ -69,6 +67,7 @@ java -jar "$MORPHE_JAR" patch \
     -e "Video quality" \
   -p "$EXTREME_PATCHES" \
     -e "Extreme Tube branding" \
+    -e "All Formats selector" \
   --exclusive \
   --out "$OUTPUT" \
   "$YOUTUBE_APK"
