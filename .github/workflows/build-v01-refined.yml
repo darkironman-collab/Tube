@@ -1,21 +1,21 @@
-name: Build Extreme Tube v0.1 Refined APK
+name: Build Ytube v0.1 Privacy APK
 
 on:
   workflow_dispatch:
   push:
     branches:
-      - v0.1-extreme-refined
+      - v0.1-extreme-presets
     paths:
       - '.github/workflows/build-v01-refined.yml'
       - 'patches/**'
-      - 'scripts/build-extreme-tube.sh'
+      - 'scripts/**'
   pull_request:
     branches:
       - main
     paths:
       - '.github/workflows/build-v01-refined.yml'
       - 'patches/**'
-      - 'scripts/build-extreme-tube.sh'
+      - 'scripts/**'
 
 permissions:
   contents: read
@@ -41,7 +41,7 @@ jobs:
           gradle-version: '9.7.0'
           cache-provider: basic
 
-      - name: Compile Extreme Tube patch bundle
+      - name: Compile Ytube patch bundle
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -82,7 +82,7 @@ jobs:
           test "$ACTUAL" = "$EXPECTED"
           unzip -tq build-input/youtube-21.04.223.apk >/dev/null
 
-      - name: Patch first-version Extreme Tube
+      - name: Build Ytube privacy version
         shell: bash
         run: |
           set -euo pipefail
@@ -92,30 +92,75 @@ jobs:
             build-input/morphe-patches.mpp \
             "$EXTREME_MPP" \
             build-input/youtube-21.04.223.apk \
-            ExtremeTube-v0.1-refined.apk
+            Ytube-v0.1-privacy.apk
 
-      - name: Verify refined APK
+      - name: Verify APK and privacy lockdown
         shell: bash
         run: |
           set -euo pipefail
-          test -s ExtremeTube-v0.1-refined.apk
-          unzip -tq ExtremeTube-v0.1-refined.apk >/dev/null
-          sha256sum ExtremeTube-v0.1-refined.apk | tee ExtremeTube-v0.1-refined.sha256
-          printf '%s\n' \
-            'Extreme Tube v0.1 Refined' \
-            'Base: YouTube 21.04.223' \
-            'Package requested: com.extremetube.app' \
-            'Changes: Extreme settings branding; Morphe network-backed About entry removed; background playback restrictions removed.' \
-            'Morphe GPL NOTICE/attribution remains bundled as required.' \
-            > ExtremeTube-v0.1-refined-README.txt
+          APK='Ytube-v0.1-privacy.apk'
+          test -s "$APK"
+          unzip -tq "$APK" >/dev/null
 
-      - name: Upload refined APK
+          rm -rf verify-apk
+          mkdir verify-apk
+          unzip -q "$APK" 'classes*.dex' 'res/xml/morphe_prefs*.xml' -d verify-apk
+
+          BLOCKED=(
+            'api.morphe.software'
+            'www.morphe.software'
+            'morphe.software'
+            'api.morphi.app'
+            'github.com/MorpheApp'
+            'raw.githubusercontent.com/MorpheApp'
+            'cdn.jsdelivr.net/gh/MorpheApp'
+            'sponsor.ajay.app'
+            'sb.ltn.fi'
+            'returnyoutubedislikeapi.com'
+            'dearrow-thumb.ajay.app'
+            'dearrow.ajay.app'
+            'raw.githubusercontent.com/Override92'
+            'aisloplist.com'
+            'api.mymemory.translated.net'
+            'openrouter.ai'
+          )
+
+          for endpoint in "${BLOCKED[@]}"; do
+            if grep -aR -F -q -- "$endpoint" verify-apk/classes*.dex verify-apk/res/xml 2>/dev/null; then
+              echo "ERROR: blocked endpoint survived in executable/resources: $endpoint" >&2
+              exit 20
+            fi
+          done
+
+          for prefs in verify-apk/res/xml/morphe_prefs.xml \
+                       verify-apk/res/xml/morphe_prefs_icons.xml \
+                       verify-apk/res/xml/morphe_prefs_icons_bold.xml; do
+            test -f "$prefs"
+            if strings -a "$prefs" | grep -F -q 'morphe_settings_screen_00_about'; then
+              echo "ERROR: Morphe About row survived in $prefs" >&2
+              exit 21
+            fi
+          done
+
+          sha256sum "$APK" | tee Ytube-v0.1-privacy.sha256
+          printf '%s\n' \
+            'Ytube v0.1 Privacy' \
+            'Base: YouTube 21.04.223' \
+            'Package: com.extremetube.app' \
+            'Settings title: YouTube Extra Setting' \
+            'Morphe About row removed from normal/icons/bold-icons settings variants.' \
+            'Listed non-Google/YouTube endpoints scrubbed from executable DEX/resources.' \
+            'Background playback and Ytube Advanced quality/presets retained.' \
+            'Required offline GPL/NOTICE attribution remains bundled.' \
+            > Ytube-v0.1-privacy-README.txt
+
+      - name: Upload Ytube privacy APK
         uses: actions/upload-artifact@v7
         with:
-          name: ExtremeTube-v0.1-refined
+          name: Ytube-v0.1-privacy
           path: |
-            ExtremeTube-v0.1-refined.apk
-            ExtremeTube-v0.1-refined.sha256
-            ExtremeTube-v0.1-refined-README.txt
+            Ytube-v0.1-privacy.apk
+            Ytube-v0.1-privacy.sha256
+            Ytube-v0.1-privacy-README.txt
           if-no-files-found: error
           retention-days: 14
