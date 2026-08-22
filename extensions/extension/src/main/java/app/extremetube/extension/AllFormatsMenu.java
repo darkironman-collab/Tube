@@ -30,7 +30,7 @@ import java.util.WeakHashMap;
  */
 @SuppressWarnings("unused")
 public final class AllFormatsMenu {
-    private static final int MAX_INSTALL_ATTEMPTS = 6;
+    private static final int MAX_INSTALL_ATTEMPTS = 12;
     private static final int PRESET_HEADER = 0;
     private static final int AUTO_ROW = 1;
     private static final Set<ListView> INSTALLED =
@@ -48,13 +48,14 @@ public final class AllFormatsMenu {
     private static void installWhenReady(ListView listView, int attempt) {
         try {
             List<AllFormatsData.FormatInfo> formats = AllFormatsData.getLatestFormats();
-            if ((formats == null || formats.isEmpty()) && attempt < MAX_INSTALL_ATTEMPTS) {
-                listView.postDelayed(() -> installWhenReady(listView, attempt + 1), 120L);
-                return;
-            }
-            if (formats == null || formats.isEmpty()) {
-                // Fail open: keep YouTube's original quality UI when stream metadata is unavailable.
-                return;
+            if (formats == null) formats = Collections.emptyList();
+
+            // IMPORTANT: presets are useful even before YouTube's adaptive-format metadata has
+            // been captured. Always install the preset UI immediately, then refresh the same
+            // adapter in the background when real formats arrive.
+            if (formats.isEmpty() && attempt < MAX_INSTALL_ATTEMPTS) {
+                final int nextAttempt = attempt + 1;
+                listView.postDelayed(() -> installWhenReady(listView, nextAttempt), 150L);
             }
 
             synchronized (INSTALLED) {
@@ -125,7 +126,7 @@ public final class AllFormatsMenu {
 
         AllFormatsAdapter(Context context, List<AllFormatsData.FormatInfo> formats) {
             this.context = context;
-            this.formats = formats;
+            this.formats = formats == null ? Collections.emptyList() : formats;
             this.rowHeight = dp(context, 52);
             this.headerHeight = dp(context, 42);
             this.horizontalPadding = dp(context, 24);
@@ -135,7 +136,7 @@ public final class AllFormatsMenu {
         }
 
         void replaceFormats(List<AllFormatsData.FormatInfo> newFormats) {
-            this.formats = newFormats;
+            this.formats = newFormats == null ? Collections.emptyList() : newFormats;
             notifyDataSetChanged();
         }
 
@@ -210,7 +211,11 @@ public final class AllFormatsMenu {
             row.setTextColor(textColor);
             row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f);
             row.setMinHeight(rowHeight);
-            row.setBackgroundResource(selectableBackground);
+            if (selectableBackground != 0) {
+                row.setBackgroundResource(selectableBackground);
+            } else {
+                row.setBackgroundColor(Color.TRANSPARENT);
+            }
 
             if (position == PRESET_HEADER) {
                 styleHeader(row, "VIDEO PRESETS");
