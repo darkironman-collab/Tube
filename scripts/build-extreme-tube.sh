@@ -69,13 +69,13 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
   --out "$STAGE1" \
   "$YOUTUBE_APK"
 
-# PRIVACY LOCKDOWN: remove the listed non-Google/YouTube endpoint strings from all DEX files.
-# The replacement is same-length so DEX offsets remain valid; the script recomputes DEX headers.
+# PRIVACY LOCKDOWN: remove the listed non-Google/YouTube endpoint strings from executable DEX.
+# Same-length replacements keep DEX string offsets stable; the scrubber recomputes SHA-1/Adler32.
 python3 scripts/scrub-third-party-domains.py "$STAGE1" "$STAGE1_SCRUB"
 rm -f "$STAGE1"
 
 # PASS 2: Ytube branding/settings cleanup plus all-format UI.
-# This rebuild/sign pass also removes the Morphe About row from all settings XML variants
+# This rebuild/sign pass removes the Morphe About row from all settings XML variants
 # and forces the Advanced quality entry used by Ytube presets/actual formats.
 "$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$EXTREME_PATCHES" \
