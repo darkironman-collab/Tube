@@ -116,13 +116,20 @@ def main() -> int:
                 if p.suffix.upper() in {".RSA", ".DSA", ".EC", ".SF", ".MF"}:
                     p.unlink(missing_ok=True)
 
-        with zipfile.ZipFile(dst, "w", allowZip64=True) as zout:
+        # Recompress the intermediate APK. The original YouTube APK keeps its very large
+        # native libraries compressed; storing .so files would nearly double the APK size.
+        with zipfile.ZipFile(
+            dst,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=6,
+            allowZip64=True,
+        ) as zout:
             for p in sorted(root.rglob("*")):
                 if not p.is_file():
                     continue
                 rel = p.relative_to(root).as_posix()
-                compress = zipfile.ZIP_STORED if rel.endswith((".so", ".arsc")) else zipfile.ZIP_DEFLATED
-                zout.write(p, rel, compress_type=compress)
+                zout.write(p, rel, compress_type=zipfile.ZIP_DEFLATED)
 
     print("Scrubbed third-party endpoint occurrences from executable DEX:")
     for key in BLOCKED:
