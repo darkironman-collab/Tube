@@ -20,10 +20,11 @@ if [[ -d "$EXTENSION_ROOT" ]]; then
     fail 'custom extension requests or references an Android permission'
   fi
 
-  # The All Formats extension is intentionally offline. Network stacks/endpoints are forbidden here.
+  # The All Formats extension is intentionally offline. Network stacks/endpoints are forbidden in executable/schema source.
+  # XML is excluded here because Android's required manifest namespace is itself an http:// URI.
   if grep -RInE \
     'java\.net\.|HttpURLConnection|URLConnection|okhttp|retrofit|WebSocket|android\.webkit|https?://|Authorization|CookieManager|android\.accounts|AccountManager' \
-    "$EXTENSION_ROOT" --include='*.java' --include='*.kt' --include='*.proto' --include='*.xml' >/dev/null; then
+    "$EXTENSION_ROOT" --include='*.java' --include='*.kt' --include='*.proto' >/dev/null; then
     fail 'network, endpoint, cookie or account-access code detected in custom extension'
   fi
 
