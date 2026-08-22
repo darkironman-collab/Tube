@@ -12,6 +12,7 @@ Usage:
     [output.apk]
 
 The script performs no downloads. All inputs must already exist locally.
+Set JAVA_BIN to an explicit Java 21 executable when needed.
 EOF
 }
 
@@ -25,6 +26,7 @@ MORPHE_PATCHES=$2
 EXTREME_PATCHES=$3
 YOUTUBE_APK=$4
 OUTPUT=${5:-ExtremeTube-v0.1-refined.apk}
+JAVA_BIN=${JAVA_BIN:-java}
 
 for file in "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"; do
   if [[ ! -f "$file" ]]; then
@@ -32,6 +34,11 @@ for file in "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"; d
     exit 3
   fi
 done
+
+if [[ ! -x "$JAVA_BIN" ]] && ! command -v "$JAVA_BIN" >/dev/null 2>&1; then
+  echo "Java executable not found: $JAVA_BIN" >&2
+  exit 6
+fi
 
 case "$YOUTUBE_APK" in
   *.apk) ;;
@@ -46,7 +53,9 @@ if [[ -e "$OUTPUT" ]]; then
   exit 5
 fi
 
-printf 'Input checksums:\n'
+printf 'Java runtime:\n'
+"$JAVA_BIN" -version
+printf '\nInput checksums:\n'
 sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 
 # First-version Extreme Tube behavior, with only the requested refinements:
@@ -56,7 +65,7 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 # - rename the injected settings entry to Extreme
 # - remove the clickable Morphe About/social/update entry that can make Morphe web requests
 # - preserve the mandatory offline Morphe GPL NOTICE/attribution
-java -jar "$MORPHE_JAR" patch \
+"$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$MORPHE_PATCHES" \
     -e "Clone app" -O "packageName=com.extremetube.app" \
     -e "GmsCore support" \
