@@ -3,6 +3,13 @@ morphe-patcher = "1.8.0"
 #noinspection GradleDependency
 smali = "d92701d947"
 gson = "2.14.0"
+protobuf = "0.10.0"
+protoc = "4.35.1"
 
 [libraries]
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protoc" }
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protoc" }
+
+[plugins]
+protobuf = { id = "com.google.protobuf", version.ref = "protobuf" }
