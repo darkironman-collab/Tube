@@ -58,13 +58,14 @@ printf 'Java runtime:\n'
 printf '\nInput checksums:\n'
 sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 
-# First-version Extreme Tube behavior, with only the requested refinements:
-# - keep the YouTube 21.04.223 / Morphe-based UI and quality behavior
-# - keep the package/branding from v0.1
-# - enable Morphe's background playback restriction-removal patch
-# - rename the injected settings entry to Extreme
-# - remove the clickable Morphe About/social/update entry that can make Morphe web requests
-# - preserve the mandatory offline Morphe GPL NOTICE/attribution
+# Preferred first-version Extreme Tube behavior:
+# - YouTube 21.04.223 UI/base
+# - background playback restrictions removed
+# - all real formats + Extreme video presets
+# - injected settings branded Extreme / Dark Ironman
+# - Morphe M root icon removed
+# - Morphe About/social/update network fetches disabled and replaced with a local page
+# - mandatory offline GPL/NOTICE attribution preserved
 "$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$MORPHE_PATCHES" \
     -e "Clone app" -O "packageName=com.extremetube.app" \
@@ -76,6 +77,7 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
     -e "Extreme Tube branding" \
     -e "All Formats selector" \
     -e "Extreme settings cleanup" \
+    -e "Extreme Morphe UI cleanup" \
   --exclusive \
   --out "$OUTPUT" \
   "$YOUTUBE_APK"
