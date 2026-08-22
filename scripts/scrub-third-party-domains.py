@@ -12,8 +12,6 @@ modules from contacting the listed third-party services even if accidentally inv
 from __future__ import annotations
 
 import hashlib
-import os
-import shutil
 import struct
 import sys
 import tempfile
@@ -49,16 +47,13 @@ BLOCKED = [
 
 def replacement(value: bytes) -> bytes:
     # Same byte length is required so DEX string-data offsets remain unchanged.
-    # Keep punctuation out of the replacement so a URL using it cannot resolve.
     return b"x" * len(value)
 
 
 def fix_dex_header(data: bytearray) -> None:
     if len(data) < 112 or not data.startswith(b"dex\n"):
         raise ValueError("Not a DEX file")
-    # DEX signature = SHA-1 of everything after the signature field.
     data[12:32] = hashlib.sha1(data[32:]).digest()
-    # DEX checksum = Adler32 of everything after the checksum field.
     checksum = zlib.adler32(data[12:]) & 0xFFFFFFFF
     data[8:12] = struct.pack("<I", checksum)
 
@@ -67,7 +62,6 @@ def scrub_dex(path: Path) -> dict[bytes, int]:
     data = bytearray(path.read_bytes())
     counts: dict[bytes, int] = {}
     changed = False
-    # Longest first avoids a shorter substring being removed before its longer form.
     for needle in sorted(BLOCKED, key=len, reverse=True):
         repl = replacement(needle)
         count = data.count(needle)
@@ -107,7 +101,15 @@ def main() -> int:
             for key, count in scrub_dex(dex).items():
                 totals[key] = totals.get(key, 0) + count
 
-        # Remove old APK signature metadata. The next patch pass rebuilds and signs the APK.
+        # Strong invariant: executable DEX must contain none of the blocked endpoints.
+        survivors: list[str] = []
+        for needle in BLOCKED:
+            if any(needle in dex.read_bytes() for dex in dex_files):
+                survivors.append(needle.decode("ascii"))
+        if survivors:
+            raise SystemExit("Blocked endpoint strings still present in DEX: " + ", ".join(survivors))
+
+        # Remove old APK signature metadata. The next patch pass rebuilds/signs the APK.
         meta = root / "META-INF"
         if meta.exists():
             for p in list(meta.iterdir()):
@@ -122,15 +124,9 @@ def main() -> int:
                 compress = zipfile.ZIP_STORED if rel.endswith((".so", ".arsc")) else zipfile.ZIP_DEFLATED
                 zout.write(p, rel, compress_type=compress)
 
-    print("Scrubbed third-party endpoint occurrences:")
+    print("Scrubbed third-party endpoint occurrences from executable DEX:")
     for key in BLOCKED:
         print(f"  {key.decode('ascii')}: {totals.get(key, 0)}")
-
-    # Strong invariant: final intermediate APK must not contain any blocked ASCII string.
-    blob = dst.read_bytes()
-    survivors = [x.decode("ascii") for x in BLOCKED if x in blob]
-    if survivors:
-        raise SystemExit("Blocked endpoint strings still present: " + ", ".join(survivors))
 
     print(f"Created scrubbed APK: {dst}")
     return 0
