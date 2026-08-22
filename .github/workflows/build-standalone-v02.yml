@@ -41,19 +41,29 @@ jobs:
         run: |
           sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
-      - name: Fetch standalone open-source base
+      - name: Fetch standalone open-source base and exact extractor
         shell: bash
         run: |
+          set -euo pipefail
           git clone --depth 1 --branch v0.29.0 https://github.com/TeamNewPipe/NewPipe.git upstream
           git -C upstream rev-parse HEAD | tee upstream-base-commit.txt
+
+          mkdir NewPipeExtractor
+          git -C NewPipeExtractor init
+          git -C NewPipeExtractor remote add origin https://github.com/TeamNewPipe/NewPipeExtractor.git
+          git -C NewPipeExtractor fetch --depth 1 origin 4de221bf67ec0bf8dbdf573fbc9d4412a8561cb0
+          git -C NewPipeExtractor checkout --detach FETCH_HEAD
+          git -C NewPipeExtractor rev-parse HEAD | tee extractor-base-commit.txt
 
       - name: Apply Extreme Tube v0.2 changes
         shell: bash
         run: |
           python3 standalone/patch_newpipe.py upstream
+          python3 standalone/enable_local_extractor.py
           grep -n 'applicationId = "com.extremetube.app"' upstream/app/build.gradle.kts
           grep -n 'NEWPIPE_VERSION_NAME = "0.2.0"' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
           grep -n 'NEWPIPE_VERSION_SDK_COMPILE_MAJOR = 36' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
+          grep -n 'includeBuild("../NewPipeExtractor")' upstream/settings.gradle.kts
           grep -n 'extremeBytes' upstream/app/src/main/java/org/schabi/newpipe/player/ui/VideoPlayerUi.java
 
       - name: Build unsigned release APK
@@ -106,10 +116,12 @@ jobs:
         run: |
           set -euo pipefail
           cp standalone/patch_newpipe.py upstream/EXTREME_TUBE_PATCH_RECIPE.py
+          cp standalone/enable_local_extractor.py upstream/EXTREME_TUBE_LOCAL_EXTRACTOR_RECIPE.py
           cp upstream-base-commit.txt upstream/UPSTREAM_BASE_COMMIT.txt
-          find upstream -type d -name build -prune -exec rm -rf {} +
-          rm -rf upstream/.git
-          tar -czf dist/ExtremeTube-v0.2.0-source.tar.gz -C upstream .
+          cp extractor-base-commit.txt NewPipeExtractor/UPSTREAM_EXTRACTOR_COMMIT.txt
+          find upstream NewPipeExtractor -type d -name build -prune -exec rm -rf {} +
+          rm -rf upstream/.git NewPipeExtractor/.git
+          tar -czf dist/ExtremeTube-v0.2.0-source.tar.gz upstream NewPipeExtractor
           sha256sum dist/ExtremeTube-v0.2.0-source.tar.gz | tee dist/ExtremeTube-v0.2.0-source.sha256
           cp upstream/EXTREME_TUBE_NOTICE.txt dist/EXTREME_TUBE_NOTICE.txt
 
@@ -128,9 +140,10 @@ jobs:
           - codec + FPS shown per video quality
           - estimated size shown in the in-player quality menu when bitrate is available
           - codec + exact fetched stream size in the stream/download selector
-          - patched corresponding source shipped with the APK
+          - exact NewPipeExtractor source commit compiled locally (no JitPack runtime dependency for the build)
+          - corresponding patched source shipped with the APK
 
-          Open-source base: NewPipe v0.29.0, GPL-3.0-or-later.
+          Open-source base: NewPipe v0.29.0 plus its exact GPL-3.0-or-later NewPipeExtractor commit.
           See EXTREME_TUBE_NOTICE.txt and the source archive for attribution/source.
           EOF
 
