@@ -3,6 +3,7 @@ package app.extremetube.extension;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Color;
+import android.graphics.Typeface;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -18,12 +19,20 @@ import java.util.Set;
 import java.util.WeakHashMap;
 
 /**
- * Replaces the contents of YouTube's existing advanced-quality ListView with one row per actual
- * adaptive video format. The surrounding YouTube bottom sheet remains the original YouTube UI.
+ * Extreme Tube quality selector.
+ *
+ * The surrounding sheet is YouTube's existing quality UI. Inside it we expose:
+ *  1) a SmartTube-style preset catalog (8K/4K/2K/1080p/etc, FPS, codec, HDR), and
+ *  2) every real adaptive format returned for the current video.
+ *
+ * Presets never invent streams. Unavailable presets stay visible so the user can keep a preferred
+ * profile; playback falls back to Auto until a matching real stream exists.
  */
 @SuppressWarnings("unused")
 public final class AllFormatsMenu {
     private static final int MAX_INSTALL_ATTEMPTS = 6;
+    private static final int PRESET_HEADER = 0;
+    private static final int AUTO_ROW = 1;
     private static final Set<ListView> INSTALLED =
             Collections.newSetFromMap(new WeakHashMap<>());
 
@@ -60,21 +69,43 @@ public final class AllFormatsMenu {
             listView.setAdapter(adapter);
             listView.setChoiceMode(ListView.CHOICE_MODE_SINGLE);
             listView.setOnItemClickListener((parent, view, position, id) -> {
-                boolean success;
-                String message;
+                if (!adapter.isSelectable(position)) return;
 
-                if (position == 0) {
-                    success = AllFormatsData.selectAutomatic();
-                    message = success ? "Auto (recommended)" : "Could not switch to Auto";
-                } else {
-                    AllFormatsData.FormatInfo format = adapter.getFormat(position - 1);
-                    if (format == null) return;
-                    success = AllFormatsData.selectItag(format.getItag());
-                    message = success ? format.getDisplayLabel() : "Format switch unavailable";
+                if (position == AUTO_ROW) {
+                    boolean success = AllFormatsData.selectAutomatic();
+                    adapter.notifyDataSetChanged();
+                    Toast.makeText(
+                            listView.getContext(),
+                            success ? "Video presets disabled • YouTube Auto" : "Preset mode disabled",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                    return;
                 }
 
-                adapter.notifyDataSetChanged();
-                Toast.makeText(listView.getContext(), message, Toast.LENGTH_SHORT).show();
+                ExtremeVideoPresets.Preset preset = adapter.getPresetAtPosition(position);
+                if (preset != null) {
+                    boolean applied = AllFormatsData.selectPreset(preset.getId());
+                    adapter.notifyDataSetChanged();
+                    Toast.makeText(
+                            listView.getContext(),
+                            applied
+                                    ? "Applied • " + preset.getDisplayName()
+                                    : "Preset saved • not available in this video",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                    return;
+                }
+
+                AllFormatsData.FormatInfo format = adapter.getFormatAtPosition(position);
+                if (format != null) {
+                    boolean success = AllFormatsData.selectItag(format.getItag());
+                    adapter.notifyDataSetChanged();
+                    Toast.makeText(
+                            listView.getContext(),
+                            success ? format.getDisplayLabel() : "Format switch unavailable",
+                            Toast.LENGTH_SHORT
+                    ).show();
+                }
             });
         } catch (Throwable ignored) {
             // UI enhancement must never make the YouTube quality sheet crash.
@@ -83,9 +114,12 @@ public final class AllFormatsMenu {
 
     private static final class AllFormatsAdapter extends BaseAdapter {
         private final Context context;
+        private final List<ExtremeVideoPresets.Preset> presets = ExtremeVideoPresets.getAll();
         private List<AllFormatsData.FormatInfo> formats;
         private final int textColor;
+        private final int secondaryTextColor;
         private final int rowHeight;
+        private final int headerHeight;
         private final int horizontalPadding;
         private final int selectableBackground;
 
@@ -93,8 +127,10 @@ public final class AllFormatsMenu {
             this.context = context;
             this.formats = formats;
             this.rowHeight = dp(context, 52);
+            this.headerHeight = dp(context, 42);
             this.horizontalPadding = dp(context, 24);
             this.textColor = resolveTextColor(context);
+            this.secondaryTextColor = resolveSecondaryTextColor(context, textColor);
             this.selectableBackground = resolveSelectableBackground(context);
         }
 
@@ -103,26 +139,57 @@ public final class AllFormatsMenu {
             notifyDataSetChanged();
         }
 
-        AllFormatsData.FormatInfo getFormat(int index) {
+        private int actualHeaderPosition() {
+            return AUTO_ROW + 1 + presets.size();
+        }
+
+        private int firstActualFormatPosition() {
+            return actualHeaderPosition() + 1;
+        }
+
+        boolean isSelectable(int position) {
+            return position != PRESET_HEADER && position != actualHeaderPosition();
+        }
+
+        ExtremeVideoPresets.Preset getPresetAtPosition(int position) {
+            int index = position - (AUTO_ROW + 1);
+            return index >= 0 && index < presets.size() ? presets.get(index) : null;
+        }
+
+        AllFormatsData.FormatInfo getFormatAtPosition(int position) {
+            int index = position - firstActualFormatPosition();
             return index >= 0 && index < formats.size() ? formats.get(index) : null;
         }
 
         @Override
         public int getCount() {
-            // First row is native-style Auto, followed by every concrete format.
-            return formats.size() + 1;
+            // Video Presets header + Disabled/Auto + preset rows + Actual Formats header + formats.
+            return 1 + 1 + presets.size() + 1 + formats.size();
         }
 
         @Override
         public Object getItem(int position) {
-            return position == 0 ? null : getFormat(position - 1);
+            ExtremeVideoPresets.Preset preset = getPresetAtPosition(position);
+            if (preset != null) return preset;
+            return getFormatAtPosition(position);
         }
 
         @Override
         public long getItemId(int position) {
-            if (position == 0) return -2;
-            AllFormatsData.FormatInfo format = getFormat(position - 1);
-            return format == null ? position : format.getItag();
+            ExtremeVideoPresets.Preset preset = getPresetAtPosition(position);
+            if (preset != null) return -100_000L - position;
+            AllFormatsData.FormatInfo format = getFormatAtPosition(position);
+            return format == null ? -position - 1L : format.getItag();
+        }
+
+        @Override
+        public boolean areAllItemsEnabled() {
+            return false;
+        }
+
+        @Override
+        public boolean isEnabled(int position) {
+            return isSelectable(position);
         }
 
         @Override
@@ -133,29 +200,70 @@ public final class AllFormatsMenu {
             } else {
                 row = new TextView(context);
                 row.setGravity(Gravity.CENTER_VERTICAL);
-                row.setMinHeight(rowHeight);
                 row.setPadding(horizontalPadding, 0, horizontalPadding, 0);
-                row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f);
-                row.setTextColor(textColor);
                 row.setMaxLines(2);
-                if (selectableBackground != 0) {
-                    row.setBackgroundResource(selectableBackground);
-                }
             }
 
-            int selectedItag = AllFormatsData.getSelectedItag();
-            if (position == 0) {
-                row.setText(selectedItag < 0 ? "✓  Auto (recommended)" : "    Auto (recommended)");
-            } else {
-                AllFormatsData.FormatInfo format = getFormat(position - 1);
-                if (format == null) {
-                    row.setText("");
-                } else {
-                    String prefix = format.getItag() == selectedItag ? "✓  " : "    ";
-                    row.setText(prefix + format.getDisplayLabel());
-                }
+            // Reset recycled state first.
+            row.setAlpha(1.0f);
+            row.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+            row.setTextColor(textColor);
+            row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 15.5f);
+            row.setMinHeight(rowHeight);
+            row.setBackgroundResource(selectableBackground);
+
+            if (position == PRESET_HEADER) {
+                styleHeader(row, "VIDEO PRESETS");
+                return row;
             }
+            if (position == actualHeaderPosition()) {
+                styleHeader(row, "ACTUAL FORMATS FOR THIS VIDEO");
+                return row;
+            }
+
+            String selectedPresetId = AllFormatsData.getSelectedPresetId();
+            int selectedItag = AllFormatsData.getSelectedItag();
+
+            if (position == AUTO_ROW) {
+                boolean selected = selectedPresetId == null && selectedItag < 0;
+                row.setText(radio(selected) + "Disabled (YouTube Auto)");
+                return row;
+            }
+
+            ExtremeVideoPresets.Preset preset = getPresetAtPosition(position);
+            if (preset != null) {
+                boolean selected = preset.getId().equals(selectedPresetId);
+                boolean available = AllFormatsData.isPresetAvailable(preset);
+                row.setText(radio(selected) + preset.getDisplayName());
+                // Keep every preset visible. A softer row means this exact profile is absent only
+                // for the current video; tapping still stores it as the preferred preset.
+                if (!available && !selected) row.setAlpha(0.50f);
+                return row;
+            }
+
+            AllFormatsData.FormatInfo format = getFormatAtPosition(position);
+            if (format == null) {
+                row.setText("");
+                return row;
+            }
+
+            boolean selected = selectedPresetId == null && format.getItag() == selectedItag;
+            row.setText(radio(selected) + format.getDisplayLabel());
             return row;
+        }
+
+        private void styleHeader(TextView row, String text) {
+            row.setText(text);
+            row.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+            row.setTextColor(secondaryTextColor);
+            row.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+            row.setMinHeight(headerHeight);
+            row.setAlpha(0.85f);
+            row.setBackgroundColor(Color.TRANSPARENT);
+        }
+
+        private static String radio(boolean selected) {
+            return selected ? "◉  " : "○  ";
         }
     }
 
@@ -167,6 +275,15 @@ public final class AllFormatsMenu {
         TypedArray values = context.obtainStyledAttributes(new int[]{android.R.attr.textColorPrimary});
         try {
             return values.getColor(0, Color.WHITE);
+        } finally {
+            values.recycle();
+        }
+    }
+
+    private static int resolveSecondaryTextColor(Context context, int fallback) {
+        TypedArray values = context.obtainStyledAttributes(new int[]{android.R.attr.textColorSecondary});
+        try {
+            return values.getColor(0, fallback);
         } finally {
             values.recycle();
         }
