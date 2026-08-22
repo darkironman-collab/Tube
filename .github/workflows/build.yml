@@ -28,9 +28,15 @@ jobs:
           gradle-version: '9.7.0'
           cache-provider: basic
 
-      - name: Validate local build script
+      - name: Validate scripts
         shell: bash
-        run: bash -n scripts/build-extreme-tube.sh
+        run: |
+          bash -n scripts/build-extreme-tube.sh
+          bash -n scripts/security-audit.sh
+
+      - name: Security audit custom source
+        shell: bash
+        run: bash scripts/security-audit.sh
 
       - name: Compile patch bundle
         env:
