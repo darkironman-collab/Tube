@@ -28,6 +28,7 @@ YOUTUBE_APK=$4
 OUTPUT=${5:-Ytube-v0.1.apk}
 JAVA_BIN=${JAVA_BIN:-java}
 STAGE1="${OUTPUT%.apk}.stage1.apk"
+STAGE1_SCRUB="${OUTPUT%.apk}.stage1-scrub.apk"
 
 for file in "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"; do
   if [[ ! -f "$file" ]]; then
@@ -46,7 +47,7 @@ case "$YOUTUBE_APK" in
   *) echo "Input must be a single .apk file." >&2; exit 4 ;;
 esac
 
-if [[ -e "$OUTPUT" || -e "$STAGE1" ]]; then
+if [[ -e "$OUTPUT" || -e "$STAGE1" || -e "$STAGE1_SCRUB" ]]; then
   echo "Refusing to overwrite existing output/stage file." >&2
   exit 5
 fi
@@ -56,7 +57,7 @@ printf 'Java runtime:\n'
 printf '\nInput checksums:\n'
 sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 
-# PASS 1: Morphe provides the selected playback/features layer on the known YouTube base.
+# PASS 1: Morphe provides only the selected playback/features layer on the known YouTube base.
 "$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$MORPHE_PATCHES" \
     -e "Clone app" -O "packageName=com.extremetube.app" \
@@ -68,9 +69,14 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
   --out "$STAGE1" \
   "$YOUTUBE_APK"
 
+# PRIVACY LOCKDOWN: remove the listed non-Google/YouTube endpoint strings from all DEX files.
+# The replacement is same-length so DEX offsets remain valid; the script recomputes DEX headers.
+python3 scripts/scrub-third-party-domains.py "$STAGE1" "$STAGE1_SCRUB"
+rm -f "$STAGE1"
+
 # PASS 2: Ytube branding/settings cleanup plus all-format UI.
-# The stage-1 APK already contains Morphe-generated settings and extension bytecode,
-# so this pass can remove the visible About/details page and force the Advanced item.
+# This rebuild/sign pass also removes the Morphe About row from all settings XML variants
+# and forces the Advanced quality entry used by Ytube presets/actual formats.
 "$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$EXTREME_PATCHES" \
     -e "Extreme Tube branding" \
@@ -79,9 +85,9 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
     -e "Extreme settings cleanup" \
   --exclusive \
   --out "$OUTPUT" \
-  "$STAGE1"
+  "$STAGE1_SCRUB"
 
-rm -f "$STAGE1"
+rm -f "$STAGE1_SCRUB"
 
 printf '\nOutput checksum:\n'
 sha256sum "$OUTPUT"
