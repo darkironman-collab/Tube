@@ -21,6 +21,10 @@ import app.extremetube.extension.proto.FormatOuterClass.Format;
  * - never reads Android accounts, cookies, headers or credentials;
  * - never persists stream URLs or player responses;
  * - retains only in-memory references already owned by the running YouTube process.
+ *
+ * Extreme presets are preferences, not fake streams. A preset is mapped to the best matching
+ * real adaptive format returned for the current video. If no match exists, normal Auto playback
+ * is retained while the preset preference remains available for another video.
  */
 @SuppressWarnings({"rawtypes", "unchecked", "unused"})
 public final class AllFormatsData {
@@ -28,16 +32,13 @@ public final class AllFormatsData {
     private static volatile List<Object> sourceFormatObjects = Collections.emptyList();
     private static volatile WeakReference<List<Object>> liveAdaptiveFormatsRef = new WeakReference<>(null);
     private static volatile int selectedItag = -1;
+    private static volatile String selectedPresetId = null;
 
     private AllFormatsData() {
     }
 
     /**
      * Injection point called with the adaptive-format list already produced by YouTube.
-     *
-     * A mutable wrapper is returned with identical contents. This gives Extreme Tube a safe,
-     * in-process list that can later be narrowed to one exact video itag while preserving all
-     * audio/unknown entries. No bytes are downloaded or persisted by this method.
      */
     public static synchronized List captureAndWrap(List adaptiveFormats) {
         if (adaptiveFormats == null || adaptiveFormats.isEmpty()) {
@@ -53,9 +54,18 @@ public final class AllFormatsData {
         sourceFormatObjects = Collections.unmodifiableList(new ArrayList<>(mutable));
         parseMetadata(sourceFormatObjects);
 
-        // If the user selected an exact format and a fresh streaming-data model is built,
-        // keep that choice only when the same itag actually exists in the new model.
-        if (selectedItag > 0 && findFormat(selectedItag) != null) {
+        // Presets intentionally persist in-memory across videos. The current video's real format
+        // list is narrowed only if a compatible stream actually exists.
+        ExtremeVideoPresets.Preset selectedPreset =
+                ExtremeVideoPresets.findById(selectedPresetId);
+        if (selectedPreset != null) {
+            FormatInfo match = findBestForPreset(selectedPreset);
+            if (match != null && filterLiveListToItag(match.getItag())) {
+                selectedItag = match.getItag();
+            } else {
+                selectedItag = -1;
+            }
+        } else if (selectedItag > 0 && findFormat(selectedItag) != null) {
             filterLiveListToItag(selectedItag);
         } else {
             selectedItag = -1;
@@ -64,9 +74,7 @@ public final class AllFormatsData {
         return mutable;
     }
 
-    /**
-     * Backwards-compatible read-only injection point used by older development builds.
-     */
+    /** Backwards-compatible injection point used by older development builds. */
     public static void capture(List<?> adaptiveFormats) {
         captureAndWrap((List) adaptiveFormats);
     }
@@ -79,16 +87,66 @@ public final class AllFormatsData {
         return selectedItag;
     }
 
+    public static String getSelectedPresetId() {
+        return selectedPresetId;
+    }
+
+    public static boolean isPresetAvailable(ExtremeVideoPresets.Preset preset) {
+        return preset != null && findBestForPreset(preset) != null;
+    }
+
+    public static FormatInfo getPresetMatch(ExtremeVideoPresets.Preset preset) {
+        return preset == null ? null : findBestForPreset(preset);
+    }
+
     /**
-     * Select one exact video itag and ask Morphe's already-injected native quality controller
-     * to re-apply that resolution. All audio formats remain available.
+     * Select a SmartTube-style Extreme preset. The preference remains selected even when the
+     * current video does not expose a matching stream; in that case playback falls back to Auto.
      */
+    public static synchronized boolean selectPreset(String presetId) {
+        ExtremeVideoPresets.Preset preset = ExtremeVideoPresets.findById(presetId);
+        if (preset == null) return false;
+
+        selectedPresetId = preset.getId();
+        restoreLiveList();
+
+        FormatInfo target = findBestForPreset(preset);
+        if (target == null) {
+            selectedItag = -1;
+            changeNativeQuality(-2);
+            return false;
+        }
+
+        if (!filterLiveListToItag(target.getItag())) {
+            selectedItag = -1;
+            changeNativeQuality(-2);
+            return false;
+        }
+
+        selectedItag = target.getItag();
+        if (changeNativeQuality(target.getHeight())) {
+            return true;
+        }
+
+        // Never leave the current player narrowed if the native controller cannot refresh.
+        restoreLiveList();
+        selectedItag = -1;
+        return false;
+    }
+
+    /** Select one exact current-video itag. Exact choices disable preset mode. */
     public static synchronized boolean selectItag(int itag) {
+        selectedPresetId = null;
+        return selectItagInternal(itag);
+    }
+
+    private static boolean selectItagInternal(int itag) {
         FormatInfo target = findFormat(itag);
         if (target == null || target.getHeight() <= 0) {
             return false;
         }
 
+        restoreLiveList();
         if (!filterLiveListToItag(itag)) {
             return false;
         }
@@ -98,16 +156,16 @@ public final class AllFormatsData {
             return true;
         }
 
-        // Never leave playback narrowed if the native controller cannot be invoked.
         restoreLiveList();
         selectedItag = -1;
         return false;
     }
 
-    /** Restore YouTube's full adaptive-format set and select the native Auto quality item. */
+    /** Disable preset/exact mode and return to YouTube Auto. */
     public static synchronized boolean selectAutomatic() {
         restoreLiveList();
         selectedItag = -1;
+        selectedPresetId = null;
         return changeNativeQuality(-2);
     }
 
@@ -123,7 +181,6 @@ public final class AllFormatsData {
 
             for (Object item : sourceFormatObjects) {
                 if (!(item instanceof MessageLite)) {
-                    // Unknown entries are preserved; the selector never deletes data it cannot identify.
                     filtered.add(item);
                     continue;
                 }
@@ -132,7 +189,7 @@ public final class AllFormatsData {
                     Format format = Format.parseFrom(((MessageLite) item).toByteArray());
                     String mimeType = safe(format.getMimeType()).toLowerCase(Locale.ROOT);
                     if (!mimeType.startsWith("video/")) {
-                        // Audio and non-video adaptive entries remain untouched.
+                        // Preserve every audio/non-video adaptive entry.
                         filtered.add(item);
                         continue;
                     }
@@ -147,9 +204,7 @@ public final class AllFormatsData {
                 }
             }
 
-            if (!selectedVideoFound) {
-                return false;
-            }
+            if (!selectedVideoFound) return false;
 
             live.clear();
             live.addAll(filtered);
@@ -162,9 +217,7 @@ public final class AllFormatsData {
 
     private static void restoreLiveList() {
         List<Object> live = liveAdaptiveFormatsRef.get();
-        if (live == null || sourceFormatObjects.isEmpty()) {
-            return;
-        }
+        if (live == null || sourceFormatObjects.isEmpty()) return;
 
         try {
             live.clear();
@@ -175,8 +228,8 @@ public final class AllFormatsData {
     }
 
     /**
-     * Uses Morphe's public patched VideoInformation bridge already present in the final build.
-     * Reflection keeps this custom extension independent from Morphe's internal Java ABI at compile time.
+     * Uses Morphe's already-injected public VideoInformation bridge. Reflection keeps this
+     * custom extension independent from Morphe's Java ABI at compile time.
      */
     private static boolean changeNativeQuality(int resolution) {
         try {
@@ -189,9 +242,7 @@ public final class AllFormatsData {
 
             Method getCurrentQualities = videoInformation.getMethod("getCurrentQualities");
             Object qualities = getCurrentQualities.invoke(null);
-            if (qualities == null || !qualities.getClass().isArray()) {
-                return false;
-            }
+            if (qualities == null || !qualities.getClass().isArray()) return false;
 
             Object chosen = null;
             Object premiumFallback = null;
@@ -204,14 +255,13 @@ public final class AllFormatsData {
                 int value = ((Number) getResolution.invoke(quality)).intValue();
                 if (value != resolution) continue;
 
-                // Prefer the normal quality object over a Premium-labelled duplicate.
                 boolean premium = false;
                 try {
                     Method getName = quality.getClass().getMethod("patch_getQualityName");
                     Object name = getName.invoke(quality);
                     premium = name != null && name.toString().contains("Premium");
                 } catch (Exception ignored) {
-                    // Name is optional for our purposes.
+                    // Name is optional.
                 }
 
                 if (!premium) {
@@ -222,9 +272,7 @@ public final class AllFormatsData {
             }
 
             if (chosen == null) chosen = premiumFallback;
-            if (chosen == null) {
-                return false;
-            }
+            if (chosen == null) return false;
 
             Method changeQuality = videoInformation.getMethod("changeQuality", qualityInterface);
             changeQuality.invoke(null, chosen);
@@ -239,32 +287,32 @@ public final class AllFormatsData {
             ArrayList<FormatInfo> parsed = new ArrayList<>(adaptiveFormats.size());
 
             for (Object item : adaptiveFormats) {
-                if (!(item instanceof MessageLite)) {
-                    continue;
-                }
+                if (!(item instanceof MessageLite)) continue;
 
                 try {
                     Format format = Format.parseFrom(((MessageLite) item).toByteArray());
                     String mimeType = safe(format.getMimeType());
-                    if (!mimeType.toLowerCase(Locale.ROOT).startsWith("video/")) {
-                        continue;
-                    }
+                    if (!mimeType.toLowerCase(Locale.ROOT).startsWith("video/")) continue;
 
                     int bitrate = format.getAverageBitrate() > 0
                             ? format.getAverageBitrate()
                             : format.getBitrate();
+                    String qualityLabel = safe(format.getQualityLabel());
 
                     parsed.add(new FormatInfo(
                             format.getItag(),
                             mimeType,
                             codecLabel(mimeType),
+                            codecFamily(mimeType),
                             containerLabel(mimeType),
                             format.getWidth(),
                             format.getHeight(),
                             format.getFps(),
                             Math.max(0, bitrate),
+                            Math.max(0L, format.getApproxDurationMs()),
+                            detectHdr(mimeType, qualityLabel),
                             safe(format.getQuality()),
-                            safe(format.getQualityLabel())
+                            qualityLabel
                     ));
                 } catch (Exception ignored) {
                     // A single unknown/changed format must never break the player.
@@ -274,6 +322,7 @@ public final class AllFormatsData {
             parsed.sort(
                     Comparator.comparingInt(FormatInfo::getHeight).reversed()
                             .thenComparing(Comparator.comparingInt(FormatInfo::getFps).reversed())
+                            .thenComparing(FormatInfo::isHdr, Comparator.reverseOrder())
                             .thenComparing(Comparator.comparingInt(FormatInfo::getBitrate).reversed())
                             .thenComparingInt(FormatInfo::getItag)
             );
@@ -291,15 +340,49 @@ public final class AllFormatsData {
         return null;
     }
 
+    private static FormatInfo findBestForPreset(ExtremeVideoPresets.Preset preset) {
+        if (preset == null) return null;
+
+        FormatInfo best = null;
+        int bestScore = Integer.MIN_VALUE;
+
+        for (FormatInfo format : latestFormats) {
+            if (format.getHeight() != preset.getHeight()) continue;
+            if (!preset.getCodec().equals(format.getCodecFamily())) continue;
+            if (format.isHdr() != preset.isHdr()) continue;
+            if (!fpsFitsPreset(format.getFps(), preset.getFps())) continue;
+
+            int fps = format.getFps() <= 0 ? preset.getFps() : format.getFps();
+            int fpsPenalty = Math.abs(preset.getFps() - fps) * 1000;
+            int bitrateBonus = Math.min(900, format.getBitrate() / 100_000);
+            int score = 100_000 - fpsPenalty + bitrateBonus;
+
+            if (best == null || score > bestScore) {
+                best = format;
+                bestScore = score;
+            }
+        }
+
+        return best;
+    }
+
+    private static boolean fpsFitsPreset(int actualFps, int presetFps) {
+        if (actualFps <= 0) return true;
+        if (presetFps >= 60) return actualFps > 30 && actualFps <= 60;
+        return actualFps <= 30;
+    }
+
     private static String safe(String value) {
         return value == null ? "" : value;
     }
 
     private static String codecLabel(String mimeType) {
+        String family = codecFamily(mimeType);
+        if (ExtremeVideoPresets.CODEC_AV1.equals(family)) return "AV1";
+        if (ExtremeVideoPresets.CODEC_VP9.equals(family)) return "VP9";
+        if (ExtremeVideoPresets.CODEC_AVC.equals(family)) return "AVC / H.264";
+
         String lower = mimeType.toLowerCase(Locale.ROOT);
-        if (lower.contains("av01")) return "AV1";
-        if (lower.contains("vp09") || lower.contains("vp9")) return "VP9";
-        if (lower.contains("avc1") || lower.contains("avc")) return "AVC / H.264";
         if (lower.contains("hev1") || lower.contains("hvc1") || lower.contains("hevc") || lower.contains("h265")) {
             return "HEVC / H.265";
         }
@@ -312,6 +395,42 @@ public final class AllFormatsData {
             return separator >= 0 ? value.substring(0, separator).trim() : value;
         }
         return "Unknown";
+    }
+
+    private static String codecFamily(String mimeType) {
+        String lower = safe(mimeType).toLowerCase(Locale.ROOT);
+        if (lower.contains("av01")) return ExtremeVideoPresets.CODEC_AV1;
+        if (lower.contains("vp09") || lower.contains("vp9")) return ExtremeVideoPresets.CODEC_VP9;
+        if (lower.contains("avc1") || lower.contains("avc")) return ExtremeVideoPresets.CODEC_AVC;
+        return "OTHER";
+    }
+
+    private static boolean detectHdr(String mimeType, String qualityLabel) {
+        String mime = safe(mimeType).toLowerCase(Locale.ROOT);
+        String label = safe(qualityLabel).toLowerCase(Locale.ROOT);
+        if (label.contains("hdr")) return true;
+
+        // YouTube VP9 HDR is profile 2. Common MIME forms include vp09.02 / vp9.2.
+        if (mime.contains("vp09.02") || mime.contains("vp9.2")) return true;
+
+        // AV1 codec strings expose bit depth (e.g. av01.0.08M.10...). YouTube's 10/12-bit AV1
+        // renditions are treated as HDR candidates when no explicit HDR label is available.
+        int av1 = mime.indexOf("av01.");
+        if (av1 >= 0) {
+            String tail = mime.substring(av1).replace("\"", "");
+            int end = tail.indexOf(';');
+            if (end >= 0) tail = tail.substring(0, end);
+            String[] parts = tail.split("\\.");
+            if (parts.length >= 4) {
+                try {
+                    int bitDepth = Integer.parseInt(parts[3].replaceAll("[^0-9]", ""));
+                    return bitDepth >= 10;
+                } catch (Exception ignored) {
+                    // Fall through to SDR.
+                }
+            }
+        }
+        return false;
     }
 
     private static String containerLabel(String mimeType) {
@@ -332,11 +451,14 @@ public final class AllFormatsData {
         private final int itag;
         private final String mimeType;
         private final String codec;
+        private final String codecFamily;
         private final String container;
         private final int width;
         private final int height;
         private final int fps;
         private final int bitrate;
+        private final long durationMs;
+        private final boolean hdr;
         private final String quality;
         private final String qualityLabel;
 
@@ -344,22 +466,28 @@ public final class AllFormatsData {
                 int itag,
                 String mimeType,
                 String codec,
+                String codecFamily,
                 String container,
                 int width,
                 int height,
                 int fps,
                 int bitrate,
+                long durationMs,
+                boolean hdr,
                 String quality,
                 String qualityLabel
         ) {
             this.itag = itag;
             this.mimeType = mimeType;
             this.codec = codec;
+            this.codecFamily = codecFamily;
             this.container = container;
             this.width = width;
             this.height = height;
             this.fps = fps;
             this.bitrate = bitrate;
+            this.durationMs = durationMs;
+            this.hdr = hdr;
             this.quality = quality;
             this.qualityLabel = qualityLabel;
         }
@@ -367,38 +495,45 @@ public final class AllFormatsData {
         public int getItag() { return itag; }
         public String getMimeType() { return mimeType; }
         public String getCodec() { return codec; }
+        public String getCodecFamily() { return codecFamily; }
         public String getContainer() { return container; }
         public int getWidth() { return width; }
         public int getHeight() { return height; }
         public int getFps() { return fps; }
         public int getBitrate() { return bitrate; }
+        public long getDurationMs() { return durationMs; }
+        public boolean isHdr() { return hdr; }
         public String getQuality() { return quality; }
         public String getQualityLabel() { return qualityLabel; }
 
+        public long getApproxSizeBytes() {
+            if (bitrate <= 0 || durationMs <= 0) return 0L;
+            return (bitrate * durationMs) / 8000L;
+        }
+
         public String getDisplayLabel() {
             StringBuilder label = new StringBuilder();
-            if (!qualityLabel.isEmpty()) {
+            if (height > 0) {
+                if (height >= 4320) label.append("(8K) ");
+                else if (height >= 2160) label.append("(4K) ");
+                else if (height >= 1440) label.append("(2K) ");
+                label.append(height).append("p");
+            } else if (!qualityLabel.isEmpty()) {
                 label.append(qualityLabel);
-            } else if (height > 0) {
-                label.append(height).append('p');
-                if (fps > 30) label.append(fps);
             } else {
                 label.append("Video");
             }
 
-            if (height >= 4320) {
-                label.append(" (8K)");
-            } else if (height >= 2160) {
-                label.append(" (4K)");
-            }
-
+            if (fps > 0) label.append(" · ").append(fps).append("fps");
             label.append(" · ").append(codec);
+            if (hdr) label.append(" HDR");
             if (!container.isEmpty() && !"Unknown".equals(container)) {
                 label.append(" · ").append(container);
             }
-            if (bitrate > 0) {
-                label.append(" · ").append(formatBitrate(bitrate));
-            }
+            if (bitrate > 0) label.append(" · ").append(formatBitrate(bitrate));
+
+            long bytes = getApproxSizeBytes();
+            if (bytes > 0) label.append(" · ~").append(formatBytes(bytes));
             return label.toString();
         }
 
@@ -410,6 +545,20 @@ public final class AllFormatsData {
                 return String.format(Locale.ROOT, "%.0f kbps", bitsPerSecond / 1_000.0);
             }
             return bitsPerSecond + " bps";
+        }
+
+        private static String formatBytes(long bytes) {
+            double value = bytes;
+            if (bytes >= 1024L * 1024L * 1024L) {
+                return String.format(Locale.ROOT, "%.2f GB", value / (1024d * 1024d * 1024d));
+            }
+            if (bytes >= 1024L * 1024L) {
+                return String.format(Locale.ROOT, "%.0f MB", value / (1024d * 1024d));
+            }
+            if (bytes >= 1024L) {
+                return String.format(Locale.ROOT, "%.0f KB", value / 1024d);
+            }
+            return bytes + " B";
         }
     }
 }
