@@ -36,11 +36,10 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK 37
+      - name: Install Android SDK 36
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platform-tools' 'platforms;android-37' 'build-tools;37.0.0'
+          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
 
       - name: Fetch standalone open-source base
         shell: bash
@@ -54,6 +53,7 @@ jobs:
           python3 standalone/patch_newpipe.py upstream
           grep -n 'applicationId = "com.extremetube.app"' upstream/app/build.gradle.kts
           grep -n 'NEWPIPE_VERSION_NAME = "0.2.0"' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
+          grep -n 'NEWPIPE_VERSION_SDK_COMPILE_MAJOR = 36' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
           grep -n 'extremeBytes' upstream/app/src/main/java/org/schabi/newpipe/player/ui/VideoPlayerUi.java
 
       - name: Build unsigned release APK
