@@ -11,7 +11,7 @@ import org.w3c.dom.Element
 val extremeSettingsCleanupPatch = resourcePatch(
     name = "Extreme settings cleanup",
     description = "Shows Extreme/Dark Ironman branding, removes the Morphe M root icon, and replaces the network About preference with a static local row.",
-    default = true
+    default = false
 ) {
     finalize {
         document("res/values/strings.xml").use { document ->
@@ -35,7 +35,6 @@ val extremeSettingsCleanupPatch = resourcePatch(
         }
 
         // Reuse Morphe's existing About icon resource id, but draw sunglasses instead.
-        // This avoids adding any new resource IDs to the already-patched APK.
         document("res/drawable/morphe_settings_screen_00_about.xml").use { document ->
             val root = document.documentElement
             while (root.hasChildNodes()) root.removeChild(root.firstChild)
@@ -48,9 +47,7 @@ val extremeSettingsCleanupPatch = resourcePatch(
             root.appendChild(path)
         }
 
-        // Morphe originally serializes this row as MorpheAboutPreference, which performs
-        // network About/social/update requests. Replace it with a plain non-interactive
-        // Preference while keeping the same key/title/icon resource IDs.
+        // Replace Morphe's network-backed About preference with a plain non-interactive row.
         document("res/xml/morphe_prefs.xml").use { document ->
             val nodes = document.getElementsByTagName("*")
             var about: Element? = null
@@ -67,7 +64,6 @@ val extremeSettingsCleanupPatch = resourcePatch(
                 replacement.setAttribute("android:key", "morphe_settings_screen_00_about")
                 replacement.setAttribute("android:title", "@string/morphe_settings_screen_00_about_title")
                 replacement.setAttribute("android:icon", "@drawable/morphe_settings_screen_00_about")
-                replacement.setAttribute("app:iconSpaceReserved", "true")
                 replacement.setAttribute("android:selectable", "false")
                 old.parentNode.replaceChild(replacement, old)
             }
