@@ -25,7 +25,7 @@ MORPHE_JAR=$1
 MORPHE_PATCHES=$2
 EXTREME_PATCHES=$3
 YOUTUBE_APK=$4
-OUTPUT=${5:-ExtremeTube-v0.1-refined.apk}
+OUTPUT=${5:-Ytube-v0.1.apk}
 JAVA_BIN=${JAVA_BIN:-java}
 STAGE1="${OUTPUT%.apk}.stage1.apk"
 
@@ -56,8 +56,7 @@ printf 'Java runtime:\n'
 printf '\nInput checksums:\n'
 sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 
-# PASS 1: let Morphe fully generate/serialize its settings and requested playback patches.
-# GmsCore support depends on Clone app, so package cloning happens here as before.
+# PASS 1: Morphe provides the selected playback/features layer on the known YouTube base.
 "$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$MORPHE_PATCHES" \
     -e "Clone app" -O "packageName=com.extremetube.app" \
@@ -69,14 +68,14 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
   --out "$STAGE1" \
   "$YOUTUBE_APK"
 
-# PASS 2: work on the finalized cloned APK. Extreme patches are intentionally package-universal
-# on this branch so they can modify the already-cloned com.extremetube.app artifact.
-# In particular, morphe_prefs.xml now already contains the About row, allowing us to replace it
-# reliably with a static Dark Ironman row and prevent the Morphe network About preference from opening.
+# PASS 2: Ytube branding/settings cleanup plus all-format UI.
+# The stage-1 APK already contains Morphe-generated settings and extension bytecode,
+# so this pass can remove the visible About/details page and force the Advanced item.
 "$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$EXTREME_PATCHES" \
     -e "Extreme Tube branding" \
     -e "All Formats selector" \
+    -e "Force advanced quality entry" \
     -e "Extreme settings cleanup" \
   --exclusive \
   --out "$OUTPUT" \
