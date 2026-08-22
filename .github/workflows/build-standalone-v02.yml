@@ -8,6 +8,12 @@ on:
     paths:
       - '.github/workflows/build-standalone-v02.yml'
       - 'standalone/**'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build-standalone-v02.yml'
+      - 'standalone/**'
 
 permissions:
   contents: write
@@ -142,6 +148,7 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub release
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
