@@ -48,6 +48,14 @@ patch(
     'const val NEWPIPE_VERSION_SDK_COMPILE_MAJOR = 36',
     1,
 )
+# Upstream documents this workaround for JitPack deleting extractor artifacts: use an
+# abbreviated form of the same commit hash so JitPack regenerates the coordinate.
+patch(
+    "gradle/libs.versions.toml",
+    'teamnewpipe-newpipe-extractor = "4de221bf67ec0bf8dbdf573fbc9d4412a8561cb0"',
+    'teamnewpipe-newpipe-extractor = "4de221bf67ec0bf8dbdf573fbc9d4412a8561cb"',
+    1,
+)
 
 # Own launcher mark: simple red play tile, no Morphe/YouTube APK artwork.
 drawable = root / "app/src/main/res/drawable/extreme_tube_icon.xml"
