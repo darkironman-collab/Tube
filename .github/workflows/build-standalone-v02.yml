@@ -1,0 +1,162 @@
+name: Build Extreme Tube Standalone v0.2
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - standalone-v0.2
+    paths:
+      - '.github/workflows/build-standalone-v02.yml'
+      - 'standalone/**'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout Extreme Tube build recipe
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 37
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager 'platform-tools' 'platforms;android-37' 'build-tools;37.0.0'
+
+      - name: Fetch standalone open-source base
+        shell: bash
+        run: |
+          git clone --depth 1 --branch v0.29.0 https://github.com/TeamNewPipe/NewPipe.git upstream
+          git -C upstream rev-parse HEAD | tee upstream-base-commit.txt
+
+      - name: Apply Extreme Tube v0.2 changes
+        shell: bash
+        run: |
+          python3 standalone/patch_newpipe.py upstream
+          grep -n 'applicationId = "com.extremetube.app"' upstream/app/build.gradle.kts
+          grep -n 'NEWPIPE_VERSION_NAME = "0.2.0"' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
+          grep -n 'extremeBytes' upstream/app/src/main/java/org/schabi/newpipe/player/ui/VideoPlayerUi.java
+
+      - name: Build unsigned release APK
+        shell: bash
+        working-directory: upstream
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleRelease -DskipFormatKtlint=true
+
+      - name: Sign and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          UNSIGNED="$(find upstream/app/build/outputs/apk/release -type f -name '*.apk' | head -n 1)"
+          test -n "$UNSIGNED"
+          echo "Unsigned APK: $UNSIGNED"
+
+          keytool -genkeypair -v \
+            -keystore extreme-tube-v02.jks \
+            -storepass changeit -keypass changeit \
+            -alias extremetube \
+            -keyalg RSA -keysize 4096 -validity 10000 \
+            -dname 'CN=Extreme Tube v0.2, OU=Standalone Build, O=Extreme Tube, C=IN'
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          test -x "$ZIPALIGN"
+
+          "$ZIPALIGN" -p -f 4 "$UNSIGNED" dist/ExtremeTube-v0.2.0-aligned.apk
+          "$APKSIGNER" sign \
+            --ks extreme-tube-v02.jks \
+            --ks-pass pass:changeit \
+            --key-pass pass:changeit \
+            --out dist/ExtremeTube-v0.2.0.apk \
+            dist/ExtremeTube-v0.2.0-aligned.apk
+          rm dist/ExtremeTube-v0.2.0-aligned.apk
+
+          "$APKSIGNER" verify --verbose --print-certs dist/ExtremeTube-v0.2.0.apk | tee dist/APK-SIGNATURE.txt
+          if test -x "$AAPT"; then
+            "$AAPT" dump badging dist/ExtremeTube-v0.2.0.apk | head -n 5 | tee dist/APK-BADGING.txt
+            grep -q "package: name='com.extremetube.app'" dist/APK-BADGING.txt
+          fi
+          sha256sum dist/ExtremeTube-v0.2.0.apk | tee dist/ExtremeTube-v0.2.0.sha256
+
+      - name: Package corresponding source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp standalone/patch_newpipe.py upstream/EXTREME_TUBE_PATCH_RECIPE.py
+          cp upstream-base-commit.txt upstream/UPSTREAM_BASE_COMMIT.txt
+          find upstream -type d -name build -prune -exec rm -rf {} +
+          rm -rf upstream/.git
+          tar -czf dist/ExtremeTube-v0.2.0-source.tar.gz -C upstream .
+          sha256sum dist/ExtremeTube-v0.2.0-source.tar.gz | tee dist/ExtremeTube-v0.2.0-source.sha256
+          cp upstream/EXTREME_TUBE_NOTICE.txt dist/EXTREME_TUBE_NOTICE.txt
+
+      - name: Write release notes
+        shell: bash
+        run: |
+          cat > dist/RELEASE-NOTES.txt <<'EOF'
+          Extreme Tube Standalone v0.2.0
+
+          Independent Android application build; no official YouTube APK and no Morphe patch bundle is used.
+
+          v0.2 additions:
+          - package: com.extremetube.app
+          - Extreme Tube launcher branding
+          - background/media-service playback
+          - codec + FPS shown per video quality
+          - estimated size shown in the in-player quality menu when bitrate is available
+          - codec + exact fetched stream size in the stream/download selector
+          - patched corresponding source shipped with the APK
+
+          Open-source base: NewPipe v0.29.0, GPL-3.0-or-later.
+          See EXTREME_TUBE_NOTICE.txt and the source archive for attribution/source.
+          EOF
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ExtremeTube-v0.2.0
+          path: |
+            dist/ExtremeTube-v0.2.0.apk
+            dist/ExtremeTube-v0.2.0.sha256
+            dist/APK-SIGNATURE.txt
+            dist/APK-BADGING.txt
+            dist/EXTREME_TUBE_NOTICE.txt
+            dist/RELEASE-NOTES.txt
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release delete extreme-tube-v0.2.0 --yes --cleanup-tag || true
+          gh release create extreme-tube-v0.2.0 \
+            dist/ExtremeTube-v0.2.0.apk \
+            dist/ExtremeTube-v0.2.0.sha256 \
+            dist/ExtremeTube-v0.2.0-source.tar.gz \
+            dist/ExtremeTube-v0.2.0-source.sha256 \
+            dist/APK-SIGNATURE.txt \
+            dist/APK-BADGING.txt \
+            dist/EXTREME_TUBE_NOTICE.txt \
+            dist/RELEASE-NOTES.txt \
+            --target "$GITHUB_SHA" \
+            --title 'Extreme Tube Standalone v0.2.0' \
+            --notes-file dist/RELEASE-NOTES.txt
