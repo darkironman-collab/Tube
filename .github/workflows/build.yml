@@ -28,6 +28,10 @@ jobs:
           gradle-version: '9.7.0'
           cache-provider: basic
 
+      - name: Validate local build script
+        shell: bash
+        run: bash -n scripts/build-extreme-tube.sh
+
       - name: Compile patch bundle
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
