@@ -33,13 +33,19 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: Set up Android SDK
+      - name: Set up current Android SDK tools
         uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: '15859902'
 
-      - name: Install Android SDK 36
+      - name: Install Android 17 SDK 37.0
         shell: bash
         run: |
-          sdkmanager 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0'
+          set -euo pipefail
+          sdkmanager --list | grep -E 'platforms;android-37\.0|build-tools;37\.0\.0' | head -n 20
+          sdkmanager 'platform-tools' 'platforms;android-37.0' 'build-tools;37.0.0'
+          test -f "$ANDROID_HOME/platforms/android-37.0/android.jar"
+          test -x "$ANDROID_HOME/build-tools/37.0.0/apksigner"
 
       - name: Fetch standalone open-source base and exact extractor
         shell: bash
@@ -59,10 +65,12 @@ jobs:
         shell: bash
         run: |
           python3 standalone/patch_newpipe.py upstream
+          python3 standalone/restore_api37.py
           python3 standalone/enable_local_extractor.py
           grep -n 'applicationId = "com.extremetube.app"' upstream/app/build.gradle.kts
           grep -n 'NEWPIPE_VERSION_NAME = "0.2.0"' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
-          grep -n 'NEWPIPE_VERSION_SDK_COMPILE_MAJOR = 36' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
+          grep -n 'NEWPIPE_VERSION_SDK_COMPILE_MAJOR = 37' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
+          grep -n 'NEWPIPE_VERSION_SDK_COMPILE_MINOR = 0' upstream/buildSrc/src/main/kotlin/ProjectConfig.kt
           grep -n 'includeBuild("../NewPipeExtractor")' upstream/settings.gradle.kts
           grep -n 'extremeBytes' upstream/app/src/main/java/org/schabi/newpipe/player/ui/VideoPlayerUi.java
 
@@ -89,9 +97,9 @@ jobs:
             -keyalg RSA -keysize 4096 -validity 10000 \
             -dname 'CN=Extreme Tube v0.2, OU=Standalone Build, O=Extreme Tube, C=IN'
 
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-          ZIPALIGN="$(find "$ANDROID_HOME/build-tools" -type f -name zipalign | sort -V | tail -n 1)"
-          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          APKSIGNER="$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          ZIPALIGN="$ANDROID_HOME/build-tools/37.0.0/zipalign"
+          AAPT="$ANDROID_HOME/build-tools/37.0.0/aapt"
           test -x "$APKSIGNER"
           test -x "$ZIPALIGN"
 
@@ -116,6 +124,7 @@ jobs:
         run: |
           set -euo pipefail
           cp standalone/patch_newpipe.py upstream/EXTREME_TUBE_PATCH_RECIPE.py
+          cp standalone/restore_api37.py upstream/EXTREME_TUBE_API37_RECIPE.py
           cp standalone/enable_local_extractor.py upstream/EXTREME_TUBE_LOCAL_EXTRACTOR_RECIPE.py
           cp upstream-base-commit.txt upstream/UPSTREAM_BASE_COMMIT.txt
           cp extractor-base-commit.txt NewPipeExtractor/UPSTREAM_EXTRACTOR_COMMIT.txt
@@ -140,7 +149,7 @@ jobs:
           - codec + FPS shown per video quality
           - estimated size shown in the in-player quality menu when bitrate is available
           - codec + exact fetched stream size in the stream/download selector
-          - exact NewPipeExtractor source commit compiled locally (no JitPack runtime dependency for the build)
+          - exact NewPipeExtractor source commit compiled locally
           - corresponding patched source shipped with the APK
 
           Open-source base: NewPipe v0.29.0 plus its exact GPL-3.0-or-later NewPipeExtractor commit.
