@@ -27,6 +27,7 @@ EXTREME_PATCHES=$3
 YOUTUBE_APK=$4
 OUTPUT=${5:-ExtremeTube-v0.1-refined.apk}
 JAVA_BIN=${JAVA_BIN:-java}
+STAGE1="${OUTPUT%.apk}.stage1.apk"
 
 for file in "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"; do
   if [[ ! -f "$file" ]]; then
@@ -42,14 +43,11 @@ fi
 
 case "$YOUTUBE_APK" in
   *.apk) ;;
-  *)
-    echo "Input must be a single .apk file for this locked-down build path." >&2
-    exit 4
-    ;;
+  *) echo "Input must be a single .apk file." >&2; exit 4 ;;
 esac
 
-if [[ -e "$OUTPUT" ]]; then
-  echo "Refusing to overwrite existing output: $OUTPUT" >&2
+if [[ -e "$OUTPUT" || -e "$STAGE1" ]]; then
+  echo "Refusing to overwrite existing output/stage file." >&2
   exit 5
 fi
 
@@ -58,14 +56,8 @@ printf 'Java runtime:\n'
 printf '\nInput checksums:\n'
 sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 
-# Preferred first-version Extreme Tube behavior:
-# - YouTube 21.04.223 UI/base
-# - background playback restrictions removed
-# - all real formats + Extreme video presets
-# - injected settings branded Extreme / Dark Ironman
-# - Morphe M root icon removed
-# - Morphe About/social/update network fetches disabled and replaced with a local page
-# - mandatory offline GPL/NOTICE attribution preserved
+# PASS 1: let Morphe fully generate/serialize its settings and requested playback patches.
+# GmsCore support depends on Clone app, so package cloning happens here as before.
 "$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$MORPHE_PATCHES" \
     -e "Clone app" -O "packageName=com.extremetube.app" \
@@ -73,14 +65,24 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
     -e "Hide ads" \
     -e "Video quality" \
     -e "Remove background playback restrictions" \
+  --exclusive \
+  --out "$STAGE1" \
+  "$YOUTUBE_APK"
+
+# PASS 2: work on the finalized cloned APK. Extreme patches are intentionally package-universal
+# on this branch so they can modify the already-cloned com.extremetube.app artifact.
+# In particular, morphe_prefs.xml now already contains the About row, allowing us to replace it
+# reliably with a static Dark Ironman row and prevent the Morphe network About preference from opening.
+"$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$EXTREME_PATCHES" \
     -e "Extreme Tube branding" \
     -e "All Formats selector" \
     -e "Extreme settings cleanup" \
-    -e "Extreme Morphe UI cleanup" \
   --exclusive \
   --out "$OUTPUT" \
-  "$YOUTUBE_APK"
+  "$STAGE1"
+
+rm -f "$STAGE1"
 
 printf '\nOutput checksum:\n'
 sha256sum "$OUTPUT"
