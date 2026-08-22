@@ -2,7 +2,6 @@ package app.extremetube.patches.branding
 
 import app.extremetube.patches.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.patcher.patch.resourcePatch
-import app.morphe.patches.youtube.misc.settings.settingsPatch
 import org.w3c.dom.Element
 import org.w3c.dom.Node
 
@@ -12,6 +11,7 @@ import org.w3c.dom.Node
  *
  * The required Morphe GPL NOTICE remains bundled offline. This patch only removes the
  * clickable About preference that can fetch Morphe website/social/update information.
+ * The resource finalizer runs after selected resource patches have written their files.
  */
 @Suppress("unused")
 val extremeSettingsCleanupPatch = resourcePatch(
@@ -19,7 +19,6 @@ val extremeSettingsCleanupPatch = resourcePatch(
     description = "Renames the Morphe settings entry to Extreme and removes the network-backed Morphe About/social-links entry while preserving required offline license notices.",
     default = true
 ) {
-    dependsOn(settingsPatch)
     compatibleWith(COMPATIBILITY_YOUTUBE)
 
     finalize {
