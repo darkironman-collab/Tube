@@ -7,12 +7,13 @@ import org.w3c.dom.Node
 /**
  * Second-pass cleanup after Morphe has generated its settings resources.
  * Visible Morphe branding is removed from the settings entry and the network-backed
- * Morphe About/details page is removed entirely. Required offline GPL/NOTICE files remain bundled.
+ * Morphe About/details page is removed from every settings XML variant.
+ * Required offline GPL/NOTICE files remain bundled.
  */
 @Suppress("unused")
 val extremeSettingsCleanupPatch = resourcePatch(
     name = "Extreme settings cleanup",
-    description = "Renames the injected settings entry to YouTube Extra Setting and removes the Morphe About/details page.",
+    description = "Renames the injected settings entry to YouTube Extra Setting and removes the Morphe About/details page from all settings variants.",
     default = false
 ) {
     finalize {
@@ -35,19 +36,24 @@ val extremeSettingsCleanupPatch = resourcePatch(
             )
         }
 
-        // Remove Morphe's About/details preference completely. This prevents the Morphe
-        // logo/version/update/Donate/Website/GitHub/Reddit/Translations/Credits page from
-        // being reachable from the visible settings UI.
-        document("res/xml/morphe_prefs.xml").use { document ->
-            val nodes = document.getElementsByTagName("*")
-            val toRemove = mutableListOf<Node>()
-            for (index in 0 until nodes.length) {
-                val element = nodes.item(index) as? Element ?: continue
-                if (element.getAttribute("android:key") == "morphe_settings_screen_00_about") {
-                    toRemove += element
+        // Morphe can render one of three preference XML variants depending on icon/bold-icon
+        // settings. Remove the About row from all of them so the page cannot be reached.
+        arrayOf(
+            "res/xml/morphe_prefs.xml",
+            "res/xml/morphe_prefs_icons.xml",
+            "res/xml/morphe_prefs_icons_bold.xml"
+        ).forEach { path ->
+            document(path).use { document ->
+                val nodes = document.getElementsByTagName("*")
+                val toRemove = mutableListOf<Node>()
+                for (index in 0 until nodes.length) {
+                    val element = nodes.item(index) as? Element ?: continue
+                    if (element.getAttribute("android:key") == "morphe_settings_screen_00_about") {
+                        toRemove += element
+                    }
                 }
+                toRemove.forEach { node -> node.parentNode?.removeChild(node) }
             }
-            toRemove.forEach { node -> node.parentNode?.removeChild(node) }
         }
     }
 }
