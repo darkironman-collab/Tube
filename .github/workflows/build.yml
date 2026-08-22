@@ -72,7 +72,6 @@ jobs:
           test -s upstream-tools/morphe-desktop-1.13.0-all.jar
           test -s upstream-tools/patches-1.39.1.mpp
           jar tf upstream-tools/morphe-desktop-1.13.0-all.jar >/dev/null
-          java -jar upstream-tools/morphe-desktop-1.13.0-all.jar --version
           sha256sum upstream-tools/* | tee upstream-tools/SHA256SUMS.txt
 
       - name: Upload Morphe runtime tools
