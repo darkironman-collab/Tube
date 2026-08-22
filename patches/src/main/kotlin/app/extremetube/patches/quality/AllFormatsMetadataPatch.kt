@@ -5,7 +5,6 @@
  */
 package app.extremetube.patches.quality
 
-import app.extremetube.patches.shared.Constants.COMPATIBILITY_YOUTUBE
 import app.morphe.patcher.Fingerprint
 import app.morphe.patcher.OpcodesFilter
 import app.morphe.patcher.extensions.InstructionExtensions.addInstruction
@@ -55,11 +54,7 @@ private object VideoStreamingDataConstructorFingerprint : Fingerprint(
     )
 )
 
-/**
- * Matches YouTube's legacy/advanced quality ListView used after opening Advanced quality.
- * The opcode structure mirrors the currently supported Morphe YouTube versions; the custom
- * ListView check keeps the match narrow without importing Morphe's private resource helpers.
- */
+/** Matches YouTube's legacy/advanced quality ListView. */
 private object VideoQualityMenuViewInflateFingerprint : Fingerprint(
     accessFlags = listOf(AccessFlags.PUBLIC, AccessFlags.FINAL),
     returnType = "L",
@@ -89,10 +84,8 @@ private object VideoQualityMenuViewInflateFingerprint : Fingerprint(
 )
 
 /**
- * Extreme Tube All Formats selector.
- *
- * The patch never synthesizes fake qualities. It exposes the actual video adaptive formats that
- * YouTube already returned and allows exact-itag selection while keeping all audio streams.
+ * Extreme Tube All Formats selector. Universal metadata is intentional because this patch runs
+ * in a second pass after the official YouTube package has already been cloned to Extreme Tube.
  */
 @Suppress("unused")
 val allFormatsMetadataPatch = bytecodePatch(
@@ -100,7 +93,6 @@ val allFormatsMetadataPatch = bytecodePatch(
     description = "Shows each actual YouTube resolution/codec/FPS/bitrate variant separately and allows exact format selection.",
     default = false
 ) {
-    compatibleWith(COMPATIBILITY_YOUTUBE)
     extendWith("extensions/extension.mpe")
 
     execute {
@@ -110,8 +102,6 @@ val allFormatsMetadataPatch = bytecodePatch(
                 val adaptiveFormatsRegister =
                     getInstruction<TwoRegisterInstruction>(adaptiveFormatsIndex).registerA
 
-                // Replace the register with an identical mutable wrapper retained only in memory.
-                // Later codec selections can narrow this exact list without touching URLs or audio.
                 addInstructions(
                     adaptiveFormatsIndex + 1,
                     """
