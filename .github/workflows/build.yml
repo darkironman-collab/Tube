@@ -57,3 +57,28 @@ jobs:
           path: patches/build/libs/*.mpp
           if-no-files-found: error
           retention-days: 14
+
+      - name: Fetch official Morphe runtime tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upstream-tools
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            'https://github.com/MorpheApp/morphe-desktop/releases/download/v1.13.0/morphe-desktop-1.13.0-all.jar' \
+            -o upstream-tools/morphe-desktop-1.13.0-all.jar
+          curl --fail --location --retry 3 --proto '=https' --tlsv1.2 \
+            'https://github.com/MorpheApp/morphe-patches/releases/download/v1.39.1/patches-1.39.1.mpp' \
+            -o upstream-tools/patches-1.39.1.mpp
+          test -s upstream-tools/morphe-desktop-1.13.0-all.jar
+          test -s upstream-tools/patches-1.39.1.mpp
+          jar tf upstream-tools/morphe-desktop-1.13.0-all.jar >/dev/null
+          java -jar upstream-tools/morphe-desktop-1.13.0-all.jar --version
+          sha256sum upstream-tools/* | tee upstream-tools/SHA256SUMS.txt
+
+      - name: Upload Morphe runtime tools
+        uses: actions/upload-artifact@v7
+        with:
+          name: Morphe-Upstream-Tools
+          path: upstream-tools/
+          if-no-files-found: error
+          retention-days: 2
