@@ -40,6 +40,14 @@ patch(
     'const val NEWPIPE_VERSION_NAME = "0.2.0"',
     1,
 )
+# Android 37 platform was not available on the hosted runner. The upstream targetSdk is 35,
+# and Extreme Tube does not use API-37-only symbols, so compile against the stable API 36 SDK.
+patch(
+    "buildSrc/src/main/kotlin/ProjectConfig.kt",
+    'const val NEWPIPE_VERSION_SDK_COMPILE_MAJOR = 37',
+    'const val NEWPIPE_VERSION_SDK_COMPILE_MAJOR = 36',
+    1,
+)
 
 # Own launcher mark: simple red play tile, no Morphe/YouTube APK artwork.
 drawable = root / "app/src/main/res/drawable/extreme_tube_icon.xml"
