@@ -59,6 +59,7 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 # - Video quality enables Morphe's current quality controller/fixes.
 # - Extreme Tube branding changes the app label without adding network code.
 # - All Formats selector exposes only formats already returned by YouTube.
+# - Hide Morphe About removes only the About row from Morphe settings.
 java -jar "$MORPHE_JAR" patch \
   -p "$MORPHE_PATCHES" \
     -e "Clone app" -O "packageName=com.extremetube.app" \
@@ -68,6 +69,7 @@ java -jar "$MORPHE_JAR" patch \
   -p "$EXTREME_PATCHES" \
     -e "Extreme Tube branding" \
     -e "All Formats selector" \
+    -e "Hide Morphe About" \
   --exclusive \
   --out "$OUTPUT" \
   "$YOUTUBE_APK"
