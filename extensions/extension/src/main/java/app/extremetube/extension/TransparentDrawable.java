@@ -5,10 +5,8 @@ import android.graphics.ColorFilter;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.Drawable;
 
-import androidx.annotation.Nullable;
-
 /** Invisible drawable used to remove the Morphe M icon beside the Extreme settings entry. */
-@SuppressWarnings("unused")
+@SuppressWarnings({"unused", "deprecation"})
 public final class TransparentDrawable extends Drawable {
     @Override
     public void draw(Canvas canvas) {
@@ -20,7 +18,7 @@ public final class TransparentDrawable extends Drawable {
     }
 
     @Override
-    public void setColorFilter(@Nullable ColorFilter colorFilter) {
+    public void setColorFilter(ColorFilter colorFilter) {
     }
 
     @Override
