@@ -10,30 +10,40 @@ private const val ROOT_TITLE = "@string/morphe_settings_title"
 private const val SUBMENU_TITLE = "@string/morphe_settings_submenu_title"
 private const val POWER_SETTING_TITLE = "YouTube Power Setting"
 
+private val USER_VISIBLE_STRING_REPLACEMENTS = mapOf(
+    "Morphe language" to "App language",
+    "Import / Export Morphe settings" to "Import / Export app settings",
+    "Show Morphe setting icons" to "Show settings icons"
+)
+
 /**
- * Keeps the first Extreme Tube / YouTube UI, removes the online Morphe About entry,
- * and presents the injected settings entry as a stock-looking YouTube Power Setting row.
- *
- * The required Morphe GPL NOTICE remains bundled offline. This patch only changes the
- * visible settings entry: the separate section heading and Morphe icon are removed.
+ * Keeps the first Extreme Tube / YouTube UI while removing Morphe branding from the
+ * user-facing settings surface. Required offline GPL notices/attribution remain bundled.
  */
 @Suppress("unused")
 val extremeSettingsCleanupPatch = resourcePatch(
     name = "Extreme settings cleanup",
-    description = "Shows a plain YouTube Power Setting entry, hides the Morphe section heading/icon, and removes the network-backed Morphe About entry while preserving required offline license notices.",
+    description = "Shows a plain YouTube Power Setting entry, removes the Morphe heading/icon and remaining Morphe labels from the settings UI, and hides the network-backed Morphe About entry while preserving required offline license notices.",
     default = true
 ) {
     compatibleWith(COMPATIBILITY_YOUTUBE)
 
     finalize {
-        // Use the requested label for both old and Cairo settings layouts.
+        // Rename only the user-facing Morphe labels requested for the stock-looking UI.
+        // Do not blanket-replace the word Morphe so required license/attribution text stays intact.
         document("res/values/strings.xml").use { document ->
             val strings = document.getElementsByTagName("string")
             for (index in 0 until strings.length) {
                 val element = strings.item(index) as? Element ?: continue
+
                 when (element.getAttribute("name")) {
                     "morphe_settings_title",
                     "morphe_settings_submenu_title" -> element.textContent = POWER_SETTING_TITLE
+                }
+
+                val currentText = element.textContent.trim()
+                USER_VISIBLE_STRING_REPLACEMENTS[currentText]?.let { replacement ->
+                    element.textContent = replacement
                 }
             }
         }
@@ -44,9 +54,8 @@ val extremeSettingsCleanupPatch = resourcePatch(
             element.removeAttribute("android:layout")
         }
 
-        // Cairo layout: Morphe normally creates a titled PreferenceCategory containing
-        // the clickable row. Move that row out of the category, then remove the category.
-        // Result: no separate "Extreme" section heading and no Morphe M icon.
+        // Cairo layout: move the clickable Power Setting row out of Morphe's titled
+        // category, remove the category, and strip the M icon.
         val cairoPath = "res/xml/settings_fragment_cairo.xml"
         if (get(cairoPath).exists()) {
             document(cairoPath).use { document ->
@@ -73,8 +82,7 @@ val extremeSettingsCleanupPatch = resourcePatch(
             }
         }
 
-        // Legacy layout: there is only one root preference, so just remove any custom
-        // Morphe icon/layout chrome and keep the new YouTube Power Setting label.
+        // Legacy layout: remove Morphe-specific icon/layout chrome from the entry.
         val legacyPath = "res/xml/settings_fragment.xml"
         if (get(legacyPath).exists()) {
             document(legacyPath).use { document ->
