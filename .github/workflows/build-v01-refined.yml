@@ -105,7 +105,7 @@ jobs:
             'Extreme Tube v0.1 Refined' \
             'Base: YouTube 21.04.223' \
             'Package requested: com.extremetube.app' \
-            'Changes: Extreme settings branding; Morphe network-backed About entry removed; background playback restrictions removed.' \
+            'Changes: YouTube Power Setting entry without separate Morphe/Extreme section heading or M icon; Morphe network-backed About entry removed; background playback restrictions removed.' \
             'Morphe GPL NOTICE/attribution remains bundled as required.' \
             > ExtremeTube-v0.1-refined-README.txt
 
