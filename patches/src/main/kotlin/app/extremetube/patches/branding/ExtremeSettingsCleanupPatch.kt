@@ -11,9 +11,9 @@ private const val SUBMENU_TITLE = "@string/morphe_settings_submenu_title"
 private const val POWER_SETTING_TITLE = "YouTube Power Setting"
 
 private val USER_VISIBLE_STRING_REPLACEMENTS = mapOf(
-    "Morphe language" to "App language",
-    "Import / Export Morphe settings" to "Import / Export app settings",
-    "Show Morphe setting icons" to "Show settings icons"
+    "morphe_language_title" to "App language",
+    "morphe_pref_import_export_summary" to "Import / Export app settings",
+    "morphe_show_menu_icons_title" to "Show settings icons"
 )
 
 /**
@@ -29,21 +29,20 @@ val extremeSettingsCleanupPatch = resourcePatch(
     compatibleWith(COMPATIBILITY_YOUTUBE)
 
     finalize {
-        // Rename only the user-facing Morphe labels requested for the stock-looking UI.
+        // Rename only the exact user-facing resource keys requested for the stock-looking UI.
         // Do not blanket-replace the word Morphe so required license/attribution text stays intact.
         document("res/values/strings.xml").use { document ->
             val strings = document.getElementsByTagName("string")
             for (index in 0 until strings.length) {
                 val element = strings.item(index) as? Element ?: continue
+                val name = element.getAttribute("name")
 
-                when (element.getAttribute("name")) {
+                when (name) {
                     "morphe_settings_title",
                     "morphe_settings_submenu_title" -> element.textContent = POWER_SETTING_TITLE
-                }
-
-                val currentText = element.textContent.trim()
-                USER_VISIBLE_STRING_REPLACEMENTS[currentText]?.let { replacement ->
-                    element.textContent = replacement
+                    else -> USER_VISIBLE_STRING_REPLACEMENTS[name]?.let { replacement ->
+                        element.textContent = replacement
+                    }
                 }
             }
         }
