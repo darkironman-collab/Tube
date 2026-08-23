@@ -121,3 +121,5 @@ val extremeSettingsCleanupPatch = resourcePatch(
         }
     }
 }
+
+// Build trigger: exact-key UI cleanup validated.
