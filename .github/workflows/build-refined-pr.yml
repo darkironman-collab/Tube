@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   build-apk:
-    if: github.head_ref == 'v0.1-extreme-refined'
+    if: startsWith(github.head_ref, 'v0.1-extreme-refined')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
