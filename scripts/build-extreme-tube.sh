@@ -12,6 +12,7 @@ Usage:
     [output.apk]
 
 The script performs no downloads. All inputs must already exist locally.
+Set JAVA_BIN to an explicit Java 21 executable when needed.
 EOF
 }
 
@@ -24,7 +25,8 @@ MORPHE_JAR=$1
 MORPHE_PATCHES=$2
 EXTREME_PATCHES=$3
 YOUTUBE_APK=$4
-OUTPUT=${5:-ExtremeTube.apk}
+OUTPUT=${5:-ExtremeTube-v0.1-refined.apk}
+JAVA_BIN=${JAVA_BIN:-java}
 
 for file in "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"; do
   if [[ ! -f "$file" ]]; then
@@ -32,6 +34,11 @@ for file in "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"; d
     exit 3
   fi
 done
+
+if [[ ! -x "$JAVA_BIN" ]] && ! command -v "$JAVA_BIN" >/dev/null 2>&1; then
+  echo "Java executable not found: $JAVA_BIN" >&2
+  exit 6
+fi
 
 case "$YOUTUBE_APK" in
   *.apk) ;;
@@ -46,30 +53,22 @@ if [[ -e "$OUTPUT" ]]; then
   exit 5
 fi
 
-printf 'Input checksums:\n'
+printf 'Java runtime:\n'
+"$JAVA_BIN" -version
+printf '\nInput checksums:\n'
 sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
 
-# Security behavior:
-# - --exclusive keeps the selected surface small and auditable.
-# - patching stops on the first error (no --continue-on-error).
-# - no network URL is supplied as a patch source.
-# - package name is changed to a distinct Extreme Tube package.
-# - GmsCore support pulls in its required stream-spoof/dependency patches.
-# - Hide ads enables Morphe's YouTube ad-removal patch.
-# - Video quality enables Morphe's current quality controller/fixes.
-# - Extreme Tube branding changes the app label without adding network code.
-# - All Formats selector exposes only formats already returned by YouTube.
-# - Hide Morphe About removes only the About row from Morphe settings.
-java -jar "$MORPHE_JAR" patch \
+"$JAVA_BIN" -jar "$MORPHE_JAR" patch \
   -p "$MORPHE_PATCHES" \
     -e "Clone app" -O "packageName=com.extremetube.app" \
     -e "GmsCore support" \
     -e "Hide ads" \
     -e "Video quality" \
+    -e "Remove background playback restrictions" \
   -p "$EXTREME_PATCHES" \
     -e "Extreme Tube branding" \
     -e "All Formats selector" \
-    -e "Hide Morphe About" \
+    -e "Extreme settings cleanup" \
   --exclusive \
   --out "$OUTPUT" \
   "$YOUTUBE_APK"
