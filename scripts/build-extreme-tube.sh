@@ -64,6 +64,7 @@ sha256sum "$MORPHE_JAR" "$MORPHE_PATCHES" "$EXTREME_PATCHES" "$YOUTUBE_APK"
     -e "GmsCore support" \
     -e "Hide ads" \
     -e "Video quality" \
+    -e "Swipe controls" \
     -e "Remove background playback restrictions" \
   -p "$EXTREME_PATCHES" \
     -e "Extreme Tube branding" \
