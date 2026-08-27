@@ -1,6 +1,13 @@
 name: Build Refined APK from PR
 
 on:
+  push:
+    branches:
+      - v0.1-extreme-refined-swipe-controls
+    paths:
+      - 'patches/**'
+      - 'scripts/build-extreme-tube.sh'
+      - '.github/workflows/build-refined-pr.yml'
   pull_request:
     branches:
       - main
@@ -14,7 +21,7 @@ permissions:
 
 jobs:
   build-apk:
-    if: startsWith(github.head_ref, 'v0.1-extreme-refined')
+    if: github.event_name == 'push' || startsWith(github.head_ref, 'v0.1-extreme-refined')
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
