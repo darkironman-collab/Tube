@@ -60,7 +60,7 @@ The locked build script is `scripts/build-extreme-tube.sh`. It performs no downl
 3. Extreme Tube patch bundle (`.mpp`)
 4. The verified YouTube base APK
 
-The script applies the official Morphe `Clone app`, `GmsCore support`, `Hide ads` and `Video quality` patches plus the Extreme Tube branding and All Formats selector, then produces a separately signed `ExtremeTube.apk` using package `com.extremetube.app`.
+The script applies the official Morphe `Clone app`, `GmsCore support`, `Hide ads`, `Video quality`, `Swipe controls` and `Remove background playback restrictions` patches plus the Extreme Tube branding and All Formats selector, then produces a separately signed `ExtremeTube.apk` using package `com.extremetube.app`.
 
 GitHub Actions publishes the compiled Extreme Tube `.mpp` as the `ExtremeTube-Patches` workflow artifact after the source build, APK guard and checksum checks pass.
 
